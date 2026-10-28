@@ -10,6 +10,11 @@
     in
     {
       nixosModules.theme = import ./theme.nix;
+      checks.${system}.theme =
+        assert import ./tests/theme.nix { inherit (nixpkgs) lib; };
+        pkgs.runCommand "theme-evaluation" { } ''
+          touch $out
+        '';
       packages.${system} = rec {
         gradient-png = import ./gradient-png.nix { inherit pkgs; };
       };
