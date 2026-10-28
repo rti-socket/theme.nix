@@ -1,173 +1,128 @@
-{ pkgs, lib, ... }:
+{ config, lib, ... }:
 
-{
-  options.theme = {
-    borderRadius = lib.mkOption { type = lib.types.int; };
-    borderWidth = lib.mkOption { type = lib.types.int; };
-    gaps = lib.mkOption { type = lib.types.int; };
-    wallpaper = lib.mkOption { type = lib.types.path; };
-    cursorTheme = lib.mkOption { type = lib.types.str; };
-    cursorSize = lib.mkOption { type = lib.types.int; };
-
-    foreground = lib.mkOption { type = lib.types.str; };
-    foreground2 = lib.mkOption { type = lib.types.str; };
-    foreground3 = lib.mkOption { type = lib.types.str; };
-    foreground4 = lib.mkOption { type = lib.types.str; };
-    foregroundSelect = lib.mkOption { type = lib.types.str; };
-
-    background = lib.mkOption { type = lib.types.str; };
-    background2 = lib.mkOption { type = lib.types.str; };
-    background3 = lib.mkOption { type = lib.types.str; };
-    background4 = lib.mkOption { type = lib.types.str; };
-    backgroundSelect = lib.mkOption { type = lib.types.str; };
-
-    backgroundOverlay = lib.mkOption { type = lib.types.str; };
-    backgroundOverlay2 = lib.mkOption { type = lib.types.str; };
-    backgroundOverlaySelect = lib.mkOption { type = lib.types.str; };
-
-    foregroundOverlay = lib.mkOption { type = lib.types.str; };
-    foregroundOverlay2 = lib.mkOption { type = lib.types.str; };
-    foregroundOverlaySelect = lib.mkOption { type = lib.types.str; };
-
-    foregroundBlue = lib.mkOption { type = lib.types.str; };
-    foregroundRed = lib.mkOption { type = lib.types.str; };
-    foregroundGreen = lib.mkOption { type = lib.types.str; };
-    foregroundYellow = lib.mkOption { type = lib.types.str; };
-    foregroundMagenta = lib.mkOption { type = lib.types.str; };
-    foregroundCyan = lib.mkOption { type = lib.types.str; };
-
-    backgroundBlue = lib.mkOption { type = lib.types.str; };
-    backgroundRed = lib.mkOption { type = lib.types.str; };
-    backgroundGreen = lib.mkOption { type = lib.types.str; };
-    backgroundYellow = lib.mkOption { type = lib.types.str; };
-    backgroundMagenta = lib.mkOption { type = lib.types.str; };
-    backgroundCyan = lib.mkOption { type = lib.types.str; };
-
-    lightBlue = lib.mkOption { type = lib.types.str; };
-    lightRed = lib.mkOption { type = lib.types.str; };
-    lightGreen = lib.mkOption { type = lib.types.str; };
-    lightYellow = lib.mkOption { type = lib.types.str; };
-    lightMagenta = lib.mkOption { type = lib.types.str; };
-    lightCyan = lib.mkOption { type = lib.types.str; };
-
-    brightBlue = lib.mkOption { type = lib.types.str; };
-    brightRed = lib.mkOption { type = lib.types.str; };
-    brightGreen = lib.mkOption { type = lib.types.str; };
-    brightYellow = lib.mkOption { type = lib.types.str; };
-    brightMagenta = lib.mkOption { type = lib.types.str; };
-    brightCyan = lib.mkOption { type = lib.types.str; };
-
-    primary = lib.mkOption { type = lib.types.str; };
-    secondary = lib.mkOption { type = lib.types.str; };
-    urgent = lib.mkOption { type = lib.types.str; };
-    backgroundPrimary = lib.mkOption { type = lib.types.str; };
-    backgroundSecondary = lib.mkOption { type = lib.types.str; };
-    backgroundUrgent = lib.mkOption { type = lib.types.str; };
-
-    /* 16 terminal colors */
-    termBlack = lib.mkOption { type = lib.types.str; };
-    termRed = lib.mkOption { type = lib.types.str; };
-    termGreen = lib.mkOption { type = lib.types.str; };
-    termYellow = lib.mkOption { type = lib.types.str; };
-    termBlue = lib.mkOption { type = lib.types.str; };
-    termMagenta = lib.mkOption { type = lib.types.str; };
-    termCyan = lib.mkOption { type = lib.types.str; };
-    termWhite = lib.mkOption { type = lib.types.str; };
-    termBrightBlack = lib.mkOption { type = lib.types.str; };
-    termBrightRed = lib.mkOption { type = lib.types.str; };
-    termBrightGreen = lib.mkOption { type = lib.types.str; };
-    termBrightYellow = lib.mkOption { type = lib.types.str; };
-    termBrightBlue = lib.mkOption { type = lib.types.str; };
-    termBrightMagenta = lib.mkOption { type = lib.types.str; };
-    termBrightCyan = lib.mkOption { type = lib.types.str; };
-    termBrightWhite = lib.mkOption { type = lib.types.str; };
+let
+  inherit (lib) mkOption types;
+  cfg = config.theme;
+  color = types.strMatching "#[0-9a-fA-F]{6}";
+  ramp = types.addCheck (types.attrsOf color)
+    (shades: lib.all (shade: builtins.match "[0-9]" shade != null) (builtins.attrNames shades));
+  colorOption = description: mkOption { type = color; inherit description; };
+  fields = names: lib.genAttrs names (name: colorOption "Color for ${name}.");
+  group = options: mkOption { type = types.submodule { inherit options; }; };
+  pair = group (fields [ "bg" "fg" ]);
+  accent = group (fields [ "fg" "bg" "solid" "onSolid" ]);
+  hues = [ "red" "green" "yellow" "blue" "magenta" "cyan" ];
+  capitalize = name: lib.toUpper (builtins.substring 0 1 name)
+    + builtins.substring 1 (-1) name;
+  # Explicit color type also supports targets inside submodules and attrsOf ramps.
+  alias = old: new: { config, options, ... }: {
+    options.theme.${old} = mkOption {
+      type = color;
+      description = "Compatibility alias for theme.${lib.concatStringsSep "." new}.";
+      apply = _: lib.getAttrFromPath ([ "theme" ] ++ new) config;
+    };
+    config = lib.mkAliasAndWrapDefsWithPriority
+      (lib.setAttrByPath ([ "theme" ] ++ new)) options.theme.${old};
   };
+  aliases = {
+    foreground = [ "colors" "surface" "fg" ];
+    foreground2 = [ "colors" "surface" "fgMuted" ];
+    foreground3 = [ "colors" "surface" "fgSubtle" ];
+    foreground4 = [ "colors" "surface" "fgDisabled" ];
+    background = [ "colors" "surface" "bg" ];
+    background2 = [ "colors" "surface" "bgAlt" ];
+    background3 = [ "colors" "surface" "bgSubtle" ];
+    background4 = [ "colors" "surface" "border" ];
+    foregroundSelect = [ "colors" "surface" "selected" "fg" ];
+    backgroundSelect = [ "colors" "surface" "selected" "bg" ];
+    foregroundOverlay = [ "colors" "overlay" "fg" ];
+    foregroundOverlay2 = [ "colors" "overlay" "fgMuted" ];
+    backgroundOverlay = [ "colors" "overlay" "bg" ];
+    backgroundOverlay2 = [ "colors" "overlay" "bgAlt" ];
+    foregroundOverlaySelect = [ "colors" "overlay" "selected" "fg" ];
+    backgroundOverlaySelect = [ "colors" "overlay" "selected" "bg" ];
+    primary = [ "colors" "primary" "solid" ];
+    secondary = [ "colors" "secondary" "solid" ];
+    urgent = [ "colors" "urgent" "solid" ];
+    backgroundPrimary = [ "colors" "primary" "fg" ];
+    backgroundSecondary = [ "colors" "secondary" "fg" ];
+    backgroundUrgent = [ "colors" "urgent" "fg" ];
+  };
+in
+{
+  imports = lib.mapAttrsToList alias aliases
+    ++ lib.concatMap (hue: [
+      (alias "foreground${capitalize hue}" [ "colors" "accents" hue "fg" ])
+      (alias "background${capitalize hue}" [ "colors" "accents" hue "bg" ])
+      (alias "light${capitalize hue}" [ "palette" hue "7" ])
+      (alias "bright${capitalize hue}" [ "palette" hue "5" ])
+    ]) hues
+    ++ lib.concatMap (hue: [
+      (alias "term${capitalize hue}" [ "colors" "terminal" "normal" hue ])
+      (alias "termBright${capitalize hue}" [ "colors" "terminal" "bright" hue ])
+    ]) ([ "black" "white" ] ++ hues);
 
-  config =
-    let
-      gradient-png = import ./gradient-png.nix { inherit pkgs; };
-    in
-    {
-      theme = rec {
-        borderRadius = 8;
-        borderWidth = 4;
-        gaps = 16;
-        wallpaper = ./wallpapers/geometric-abstract-3840x2160-23187.jpg;
-        # wallpaper = gradient-png;
-        cursorTheme = "Adwaita";
-        cursorSize = 24;
-
-        # Teal and copper hues with the original HSL saturation and lightness.
-        foreground = "#000000";
-        foreground2 = "#404344";
-        foreground3 = "#727a7d";
-        foreground4 = "#a2adb1";
-        foregroundSelect = foreground;
-        foregroundOverlay = background;
-        foregroundOverlay2 = background3;
-        foregroundOverlaySelect = background;
-
-        background = "#ffffff";
-        background2 = "#f8f9fa";
-        background3 = "#eaeef0";
-        background4 = "#c8cfd1";
-        backgroundSelect = background3;
-        backgroundOverlay = foreground2;
-        backgroundOverlay2 = foreground3;
-        backgroundOverlaySelect = foregroundCyan;
-
-        foregroundRed = "#b34124";
-        foregroundGreen = "#14866b";
-        foregroundYellow = "#ac6700";
-        foregroundBlue = "#1e7595";
-        foregroundMagenta = "#b3243c";
-        foregroundCyan = "#1e8195";
-
-        backgroundRed = "#feebe6";
-        backgroundGreen = "#d5fdf4";
-        backgroundYellow = "#ffe3ba";
-        backgroundBlue = "#eaf9ff";
-        backgroundMagenta = "#fae7ea";
-        backgroundCyan = "#daf2f7";
-
-        lightRed = "#ffa994";
-        lightGreen = "#6bd6bd";
-        lightYellow = "#ffd18d";
-        lightBlue = "#97e0fa";
-        lightMagenta = "#ea97a5";
-        lightCyan = "#83d5e5";
-
-        brightRed = "#ff6842";
-        brightGreen = "#00af86";
-        brightYellow = "#ffad33";
-        brightBlue = "#44c6f5";
-        brightMagenta = "#da465f";
-        brightCyan = "#2bb7d3";
-
-        primary = brightCyan;
-        secondary = brightMagenta;
-        urgent = brightRed;
-        # TODO: fix confusing naming
-        backgroundPrimary = foregroundCyan;
-        backgroundSecondary = foregroundMagenta;
-        backgroundUrgent = foregroundRed;
-
-        termBlack = background;
-        termBrightBlack = foreground3;
-        termWhite = foreground;
-        termBrightWhite = foreground3;
-        termRed = foregroundRed;
-        termBrightRed = brightRed;
-        termGreen = foregroundGreen;
-        termBrightGreen = brightGreen;
-        termYellow = foregroundYellow;
-        termBrightYellow = brightYellow;
-        termBlue = foregroundBlue;
-        termBrightBlue = brightBlue;
-        termMagenta = foregroundMagenta;
-        termBrightMagenta = brightMagenta;
-        termCyan = foregroundCyan;
-        termBrightCyan = brightCyan;
+  options.theme = {
+    mode = mkOption {
+      type = types.enum [ "light" "dark" ];
+      default = "light";
+      description = "Select semantic colors at Nix evaluation time.";
+    };
+    palette = mkOption {
+      type = types.attrsOf ramp;
+      description = "Hue ramps with sparse shades 0 (darkest) through 9 (lightest), independent of mode.";
+    };
+    roles = group (lib.genAttrs [ "primary" "secondary" "urgent" ] (name: mkOption {
+      type = ramp;
+      description = "Mode-independent palette ramp for the ${name} role.";
+    }));
+    colors = group {
+      surface = group ((fields [
+        "bg" "bgAlt" "bgSubtle" "border" "fg" "fgMuted" "fgSubtle" "fgDisabled"
+      ]) // { selected = pair; hover = pair; });
+      overlay = group ((fields [ "bg" "bgAlt" "fg" "fgMuted" ]) // {
+        selected = pair;
+        hover = pair;
+      });
+      selection = pair;
+      focus = group (fields [ "border" ]);
+      scrim = group {
+        color = colorOption "Color behind modal surfaces.";
+        opacity = mkOption {
+          type = types.numbers.between 0 1;
+          description = "Scrim opacity, kept separate from renderer-specific color syntax.";
+        };
+      };
+      primary = accent;
+      secondary = accent;
+      urgent = accent;
+      accents = group (lib.genAttrs hues (_: accent));
+      terminal = group {
+        normal = group (fields ([ "black" "white" ] ++ hues));
+        bright = group (fields ([ "black" "white" ] ++ hues));
       };
     };
+    borderRadius = mkOption { type = types.int; default = 8; };
+    borderWidth = mkOption { type = types.int; default = 4; };
+    gaps = mkOption { type = types.int; default = 16; };
+    wallpaper = mkOption {
+      type = types.path;
+      default = ./wallpapers/geometric-abstract-3840x2160-23187.jpg;
+    };
+    cursorTheme = mkOption { type = types.str; default = "Adwaita"; };
+    cursorSize = mkOption { type = types.int; default = 24; };
+  };
+
+  config.theme = {
+    palette = lib.mapAttrsRecursive (_: value: lib.mkDefault value) (import ./palette.nix);
+    roles = lib.mapAttrsRecursive (_: value: lib.mkDefault value) {
+      primary = cfg.palette.cyan;
+      secondary = cfg.palette.magenta;
+      urgent = cfg.palette.red;
+    };
+    # Defaults at leaf level allow both new tokens and legacy aliases to be overridden.
+    colors = lib.mapAttrsRecursive (_: value: lib.mkDefault value) (import ./colors.nix {
+      inherit (cfg) palette roles mode;
+    });
+  };
 }
